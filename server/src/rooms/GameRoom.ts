@@ -44,6 +44,7 @@ export class GameRoom extends Room<GameState> {
 
   onCreate() {
     console.log("GameRoom created!");
+    this.maxClients = 4;
 
     this.setState(new GameState());
 

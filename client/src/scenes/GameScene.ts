@@ -25,6 +25,9 @@ export class GameScene extends Phaser.Scene {
   };
   private inputCooldown = 0;
   private mapDrawn = false;
+  private escKey!: Phaser.Input.Keyboard.Key;
+  private pauseOverlay: Phaser.GameObjects.Container | null = null;
+  private isPaused = false;
 
   constructor() {
     super({ key: "GameScene" });
@@ -35,6 +38,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // Reset state for scene restart
+    this.playerSprites = new Map();
+    this.enemySprites = new Map();
+    this.mapDrawn = false;
+    this.isPaused = false;
+    this.pauseOverlay = null;
+    this.inputCooldown = 0;
+
     // Set up keyboard input
     this.keys = {
       W: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
@@ -42,6 +53,16 @@ export class GameScene extends Phaser.Scene {
       S: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
       D: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
+
+    // Escape key for pause menu
+    this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.escKey.on("down", () => {
+      if (this.isPaused) {
+        this.hidePauseOverlay();
+      } else {
+        this.showPauseOverlay();
+      }
+    });
 
     // Tile layer
     this.tileGraphics = this.add.graphics();
@@ -59,8 +80,114 @@ export class GameScene extends Phaser.Scene {
 
     // Handle disconnect
     this.room.onLeave(() => {
-      this.scene.start("ConnectScene");
+      if (this.scene.isActive()) {
+        this.scene.start("MenuScene");
+      }
     });
+  }
+
+  private showPauseOverlay() {
+    if (this.pauseOverlay) return;
+    this.isPaused = true;
+
+    const cam = this.cameras.main;
+    this.pauseOverlay = this.add.container(0, 0);
+    this.pauseOverlay.setDepth(100);
+    this.pauseOverlay.setScrollFactor(0);
+
+    // Dim background
+    const dimBg = this.add.graphics();
+    dimBg.fillStyle(0x000000, 0.7);
+    dimBg.fillRect(0, 0, cam.width, cam.height);
+    dimBg.setScrollFactor(0);
+    this.pauseOverlay.add(dimBg);
+
+    // Click on dim area dismisses
+    const dismissZone = this.add.zone(0, 0, cam.width, cam.height).setOrigin(0, 0).setScrollFactor(0).setInteractive();
+    dismissZone.on("pointerdown", () => this.hidePauseOverlay());
+    this.pauseOverlay.add(dismissZone);
+
+    // "PAUSED" text
+    const pausedText = this.add
+      .text(cam.width / 2, cam.height / 2 - 60, "PAUSED", {
+        fontSize: "36px",
+        color: "#e94560",
+        fontFamily: "monospace",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    this.pauseOverlay.add(pausedText);
+
+    // Leave Room button
+    const btnW = 220;
+    const btnH = 44;
+    const btnX = cam.width / 2;
+    const btnY = cam.height / 2 + 10;
+
+    const btnBg = this.add.graphics();
+    btnBg.setScrollFactor(0);
+    const drawNormal = () => {
+      btnBg.clear();
+      btnBg.fillStyle(0xe94560, 1);
+      btnBg.fillRoundedRect(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH, 8);
+    };
+    const drawHover = () => {
+      btnBg.clear();
+      btnBg.fillStyle(0xff5577, 1);
+      btnBg.fillRoundedRect(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH, 8);
+    };
+    drawNormal();
+    this.pauseOverlay.add(btnBg);
+
+    const btnText = this.add
+      .text(btnX, btnY, "LEAVE ROOM", {
+        fontSize: "18px",
+        color: "#ffffff",
+        fontFamily: "monospace",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    this.pauseOverlay.add(btnText);
+
+    const btnZone = this.add
+      .zone(btnX - btnW / 2, btnY - btnH / 2, btnW, btnH)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true });
+    btnZone.on("pointerover", drawHover);
+    btnZone.on("pointerout", drawNormal);
+    btnZone.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      pointer.event.stopPropagation();
+      this.leaveRoom();
+    });
+    this.pauseOverlay.add(btnZone);
+
+    // ESC hint
+    const hintText = this.add
+      .text(cam.width / 2, btnY + 50, "Press ESC to resume", {
+        fontSize: "12px",
+        color: "#666688",
+        fontFamily: "monospace",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    this.pauseOverlay.add(hintText);
+  }
+
+  private hidePauseOverlay() {
+    if (this.pauseOverlay) {
+      this.pauseOverlay.destroy(true);
+      this.pauseOverlay = null;
+    }
+    this.isPaused = false;
+  }
+
+  private leaveRoom() {
+    this.hidePauseOverlay();
+    this.room.leave();
+    this.scene.start("MenuScene");
   }
 
   private setupStateListeners() {
@@ -235,6 +362,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
+    // Don't process input while paused
+    if (this.isPaused) return;
+
     // Input handling with cooldown (150ms between moves for grid-based movement)
     this.inputCooldown -= delta;
     if (this.inputCooldown > 0) return;
