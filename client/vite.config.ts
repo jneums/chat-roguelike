@@ -21,7 +21,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@chat-roguelike/shared": "../shared/src",
+      "@chat-roguelike/shared": "../shared/src/index.ts",
     },
   },
 });
