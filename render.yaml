@@ -29,7 +29,6 @@ services:
   - type: web
     name: chat-roguelike-client
     runtime: static
-    region: oregon
     plan: free
     buildCommand: npm install && npm run build -w shared && npm run build -w client
     staticPublishPath: client/dist
