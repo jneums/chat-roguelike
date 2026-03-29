@@ -1,0 +1,52 @@
+previewsEnabled: true
+previewsExpireAfterDays: 3
+
+services:
+  # Game server (Colyseus WebSocket)
+  - type: web
+    name: chat-roguelike-server
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build -w shared && npm run build -w server
+    startCommand: node server/dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 2567
+      - key: CLIENT_URL
+        fromService:
+          name: chat-roguelike-client
+          type: web
+          property: host
+    healthCheckPath: /matchmake/
+    autoDeploy: true
+    previews:
+      generation: automatic
+
+  # Frontend (Vite static build)
+  - type: web
+    name: chat-roguelike-client
+    runtime: static
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build -w shared && npm run build -w client
+    staticPublishPath: client/dist
+    envVars:
+      - key: VITE_SERVER_URL
+        fromService:
+          name: chat-roguelike-server
+          type: web
+          property: hostport
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    autoDeploy: true
+    previews:
+      generation: automatic
