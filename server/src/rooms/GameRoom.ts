@@ -182,47 +182,74 @@ export class GameRoom extends Room<GameState> {
       }
 
       // Find nearest reachable player using A* path distance
-      const AGGRO_RANGE = 10; // tiles of actual walking distance
-      let bestPath: { nextStep: { x: number; y: number }; pathLength: number } | null = null;
-      let bestTarget: typeof players[0] | null = null;
+      const AGGRO_RANGE = 10;
 
+      // Already adjacent to a player? Attack, don't move.
+      let meleeTarget: typeof players[0] | null = null;
       for (const p of players) {
         if (p.hp <= 0) continue;
-
-        // Quick Manhattan pre-check to skip obviously far players
-        const manhattan = Math.abs(p.x - enemy.x) + Math.abs(p.y - enemy.y);
-        if (manhattan > AGGRO_RANGE * 2) continue;
-
-        const path = findPath(
-          enemy.x, enemy.y,
-          p.x, p.y,
-          this.state.tiles,
-          GameConfig.MAP_WIDTH,
-          GameConfig.MAP_HEIGHT
-        );
-
-        if (path && path.pathLength <= AGGRO_RANGE) {
-          if (!bestPath || path.pathLength < bestPath.pathLength) {
-            bestPath = path;
-            bestTarget = p;
-          }
+        if (this.isAdjacent(enemy.x, enemy.y, p.x, p.y)) {
+          meleeTarget = p;
+          break;
         }
       }
 
-      if (bestPath && bestTarget) {
-        // Already adjacent to target — attack, don't move
-        if (this.isAdjacent(enemy.x, enemy.y, bestTarget.x, bestTarget.y)) {
-          bestTarget.hp = Math.max(0, bestTarget.hp - 10);
-          if (bestTarget.hp <= 0) {
-            setTimeout(() => {
-              const spawn = this.spawnPoints[0] || { x: 5, y: 5 };
-              bestTarget!.x = spawn.x;
-              bestTarget!.y = spawn.y;
-              bestTarget!.hp = bestTarget!.maxHp;
-            }, 3000);
+      if (meleeTarget) {
+        meleeTarget.hp = Math.max(0, meleeTarget.hp - 10);
+        if (meleeTarget.hp <= 0) {
+          const target = meleeTarget;
+          setTimeout(() => {
+            const spawn = this.spawnPoints[0] || { x: 5, y: 5 };
+            target.x = spawn.x;
+            target.y = spawn.y;
+            target.hp = target.maxHp;
+          }, 3000);
+        }
+      } else {
+        // Not adjacent — pathfind to an open tile adjacent to the nearest player
+        let bestPath: { nextStep: { x: number; y: number }; pathLength: number } | null = null;
+
+        for (const p of players) {
+          if (p.hp <= 0) continue;
+          const manhattan = Math.abs(p.x - enemy.x) + Math.abs(p.y - enemy.y);
+          if (manhattan > AGGRO_RANGE * 2) continue;
+
+          // Try each tile adjacent to the player, find the best reachable one
+          const adjacentTiles = [
+            { x: p.x, y: p.y - 1 },
+            { x: p.x, y: p.y + 1 },
+            { x: p.x - 1, y: p.y },
+            { x: p.x + 1, y: p.y },
+          ];
+
+          for (const adj of adjacentTiles) {
+            if (!this.isWalkable(adj.x, adj.y)) continue;
+            // Skip if another enemy is already there (or heading there)
+            if (this.isTileOccupied(adj.x, adj.y, enemy.id)) continue;
+
+            // Already at this adjacent spot
+            if (enemy.x === adj.x && enemy.y === adj.y) {
+              // Shouldn't happen (isAdjacent check above), but just in case
+              continue;
+            }
+
+            const path = findPath(
+              enemy.x, enemy.y,
+              adj.x, adj.y,
+              this.state.tiles,
+              GameConfig.MAP_WIDTH,
+              GameConfig.MAP_HEIGHT
+            );
+
+            if (path && path.pathLength <= AGGRO_RANGE) {
+              if (!bestPath || path.pathLength < bestPath.pathLength) {
+                bestPath = path;
+              }
+            }
           }
-        } else {
-          // Move toward target, but don't step on occupied tiles
+        }
+
+        if (bestPath) {
           const nextStep = bestPath.nextStep;
           if (!this.isTileOccupied(nextStep.x, nextStep.y, enemy.id)) {
             enemy.x = nextStep.x;
