@@ -94,8 +94,8 @@ export class GameRoom extends Room<GameState> {
       const newX = player.x + dx;
       const newY = player.y + dy;
 
-      // Collision check
-      if (this.isWalkable(newX, newY)) {
+      // Collision check — walls and other entities
+      if (this.isWalkable(newX, newY) && !this.isTileOccupied(newX, newY, client.sessionId)) {
         player.x = newX;
         player.y = newY;
       }
@@ -110,6 +110,23 @@ export class GameRoom extends Room<GameState> {
       return false;
     }
     return this.state.tiles[y * GameConfig.MAP_WIDTH + x] === TileType.FLOOR;
+  }
+
+  private isTileOccupied(x: number, y: number, ignoreId?: string): boolean {
+    // Check players
+    for (const [, p] of this.state.players) {
+      if (p.x === x && p.y === y) return true;
+    }
+    // Check enemies
+    for (const [, e] of this.state.enemies) {
+      if (ignoreId && e.id === ignoreId) continue;
+      if (e.x === x && e.y === y && e.hp > 0) return true;
+    }
+    return false;
+  }
+
+  private isAdjacent(ax: number, ay: number, bx: number, by: number): boolean {
+    return Math.abs(ax - bx) + Math.abs(ay - by) === 1;
   }
 
   private spawnEnemy(x: number, y: number): void {
@@ -193,9 +210,8 @@ export class GameRoom extends Room<GameState> {
       }
 
       if (bestPath && bestTarget) {
-        // If already adjacent to target (pathLength === 1), stay put and attack
-        if (bestPath.pathLength <= 1) {
-          // Deal damage but don't move onto the player
+        // Already adjacent to target — attack, don't move
+        if (this.isAdjacent(enemy.x, enemy.y, bestTarget.x, bestTarget.y)) {
           bestTarget.hp = Math.max(0, bestTarget.hp - 10);
           if (bestTarget.hp <= 0) {
             setTimeout(() => {
@@ -206,15 +222,9 @@ export class GameRoom extends Room<GameState> {
             }, 3000);
           }
         } else {
-          // Check if next step is occupied by another enemy
+          // Move toward target, but don't step on occupied tiles
           const nextStep = bestPath.nextStep;
-          let blocked = false;
-          this.state.enemies.forEach((other) => {
-            if (other.id !== enemy.id && other.x === nextStep.x && other.y === nextStep.y) {
-              blocked = true;
-            }
-          });
-          if (!blocked) {
+          if (!this.isTileOccupied(nextStep.x, nextStep.y, enemy.id)) {
             enemy.x = nextStep.x;
             enemy.y = nextStep.y;
           }
