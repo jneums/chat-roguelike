@@ -163,7 +163,8 @@ export class GameRoom extends Room<GameState> {
       }
 
       // Find nearest player
-      let nearest = players[0];
+      const AGGRO_RANGE = 8; // tiles
+      let nearest: typeof players[0] | null = null;
       let nearestDist = Infinity;
       for (const p of players) {
         if (p.hp <= 0) continue;
@@ -174,9 +175,10 @@ export class GameRoom extends Room<GameState> {
         }
       }
 
-      if (!nearest || nearest.hp <= 0) return;
+      // Only chase if player is within aggro range
+      if (!nearest || nearest.hp <= 0 || nearestDist > AGGRO_RANGE) return;
 
-      // Move toward nearest player (simple chase)
+      // Move toward nearest player (chase)
       let dx = 0;
       let dy = 0;
       if (Math.abs(nearest.x - enemy.x) > Math.abs(nearest.y - enemy.y)) {
