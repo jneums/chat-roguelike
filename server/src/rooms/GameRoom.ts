@@ -12,6 +12,18 @@ export class Player extends Schema {
   @type("number") hp: number = 100;
   @type("number") maxHp: number = 100;
   @type("string") color: string = "#ffffff";
+  @type("number") facingX: number = 0;
+  @type("number") facingY: number = 1;
+}
+
+export class Projectile extends Schema {
+  @type("string") id: string = "";
+  @type("number") x: number = 0;
+  @type("number") y: number = 0;
+  @type("number") dx: number = 0;
+  @type("number") dy: number = 0;
+  @type("string") ownerId: string = "";
+  @type("string") color: string = "#ffffff";
 }
 
 export class Enemy extends Schema {
@@ -26,6 +38,7 @@ export class Enemy extends Schema {
 export class GameState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
   @type({ map: Enemy }) enemies = new MapSchema<Enemy>();
+  @type({ map: Projectile }) projectiles = new MapSchema<Projectile>();
   @type(["number"]) tiles = new ArraySchema<number>();
   @type("number") width: number = GameConfig.MAP_WIDTH;
   @type("number") height: number = GameConfig.MAP_HEIGHT;
@@ -40,6 +53,7 @@ export class GameRoom extends Room<GameState> {
   private dungeon!: DungeonResult;
   private enemyCounter = 0;
   private tickCount = 0;
+  private projectileCounter = 0;
   private spawnPoints: { x: number; y: number }[] = [];
 
   onCreate() {
@@ -99,6 +113,27 @@ export class GameRoom extends Room<GameState> {
         player.x = newX;
         player.y = newY;
       }
+
+      // Update facing direction
+      player.facingX = dx;
+      player.facingY = dy;
+    });
+
+    // Handle shoot messages
+    this.onMessage("shoot", (client) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player || player.hp <= 0) return;
+      if (player.facingX === 0 && player.facingY === 0) return;
+
+      const proj = new Projectile();
+      proj.id = `proj_${this.projectileCounter++}`;
+      proj.x = player.x + player.facingX;
+      proj.y = player.y + player.facingY;
+      proj.dx = player.facingX;
+      proj.dy = player.facingY;
+      proj.ownerId = client.sessionId;
+      proj.color = player.color;
+      this.state.projectiles.set(proj.id, proj);
     });
 
     // Game loop at 20 FPS
@@ -164,6 +199,29 @@ export class GameRoom extends Room<GameState> {
 
   private update(deltaTime: number): void {
     this.tickCount++;
+
+    // Update projectiles every tick — they move fast
+    const toRemove: string[] = [];
+    this.state.projectiles.forEach((proj, id) => {
+      proj.x += proj.dx;
+      proj.y += proj.dy;
+
+      // Remove if hit wall or out of bounds
+      if (!this.isWalkable(proj.x, proj.y)) {
+        toRemove.push(id);
+        return;
+      }
+
+      // Check enemy hits
+      this.state.enemies.forEach((enemy) => {
+        if (enemy.hp <= 0) return;
+        if (enemy.x === proj.x && enemy.y === proj.y) {
+          enemy.hp -= 15;
+          toRemove.push(id);
+        }
+      });
+    });
+    toRemove.forEach((id) => this.state.projectiles.delete(id));
 
     // Move enemies every 5 ticks (4 times per second)
     if (this.tickCount % 5 !== 0) return;

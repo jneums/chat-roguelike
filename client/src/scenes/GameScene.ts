@@ -10,6 +10,7 @@ const COLORS = {
   ENEMY: 0xe94560,
   HP_BAR_BG: 0x333333,
   HP_BAR: 0x00ff88,
+  PROJECTILE: 0xffff00,
 };
 
 export class GameScene extends Phaser.Scene {
@@ -17,13 +18,16 @@ export class GameScene extends Phaser.Scene {
   private tileGraphics!: Phaser.GameObjects.Graphics;
   private playerSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private enemySprites: Map<string, Phaser.GameObjects.Container> = new Map();
+  private projectileSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private keys!: {
     W: Phaser.Input.Keyboard.Key;
     A: Phaser.Input.Keyboard.Key;
     S: Phaser.Input.Keyboard.Key;
     D: Phaser.Input.Keyboard.Key;
+    SPACE: Phaser.Input.Keyboard.Key;
   };
   private inputCooldown = 0;
+  private shootCooldown = 0;
   private mapDrawn = false;
   private escKey!: Phaser.Input.Keyboard.Key;
   private pauseOverlay: Phaser.GameObjects.Container | null = null;
@@ -41,6 +45,7 @@ export class GameScene extends Phaser.Scene {
     // Reset state for scene restart
     this.playerSprites = new Map();
     this.enemySprites = new Map();
+    this.projectileSprites = new Map();
     this.mapDrawn = false;
     this.isPaused = false;
     this.pauseOverlay = null;
@@ -52,6 +57,7 @@ export class GameScene extends Phaser.Scene {
       A: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
       S: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
       D: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+      SPACE: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
     };
 
     // Escape key for pause menu
@@ -244,6 +250,37 @@ export class GameScene extends Phaser.Scene {
         this.enemySprites.delete(id);
       }
     });
+
+    // Projectile add
+    state.projectiles.onAdd((proj: any, id: string) => {
+      const container = this.add.container(
+        proj.x * TILE + TILE / 2,
+        proj.y * TILE + TILE / 2
+      );
+      container.setDepth(8);
+
+      const gfx = this.add.graphics();
+      const color = Phaser.Display.Color.HexStringToColor(proj.color).color;
+      gfx.fillStyle(color, 1);
+      gfx.fillCircle(0, 0, 6);
+      container.add(gfx);
+
+      this.projectileSprites.set(id, container);
+
+      proj.onChange(() => {
+        container.x = proj.x * TILE + TILE / 2;
+        container.y = proj.y * TILE + TILE / 2;
+      });
+    });
+
+    // Projectile remove
+    state.projectiles.onRemove((_proj: any, id: string) => {
+      const sprite = this.projectileSprites.get(id);
+      if (sprite) {
+        sprite.destroy();
+        this.projectileSprites.delete(id);
+      }
+    });
   }
 
   private drawMap(tiles: any, width: number) {
@@ -364,6 +401,13 @@ export class GameScene extends Phaser.Scene {
   update(time: number, delta: number) {
     // Don't process input while paused
     if (this.isPaused) return;
+
+    // Shoot handling (separate cooldown)
+    this.shootCooldown -= delta;
+    if (this.keys.SPACE.isDown && this.shootCooldown <= 0) {
+      this.room.send("shoot");
+      this.shootCooldown = 300;
+    }
 
     // Input handling with cooldown (150ms between moves for grid-based movement)
     this.inputCooldown -= delta;
