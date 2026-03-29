@@ -2,6 +2,7 @@ import { Room, Client } from "colyseus";
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { GameConfig, TileType, Direction } from "@chat-roguelike/shared";
 import { generateDungeon, DungeonResult } from "./dungeonGenerator";
+import { findNextStep } from "./pathfinding";
 
 // Schema classes for Colyseus state synchronization
 export class Player extends Schema {
@@ -178,21 +179,18 @@ export class GameRoom extends Room<GameState> {
       // Only chase if player is within aggro range
       if (!nearest || nearest.hp <= 0 || nearestDist > AGGRO_RANGE) return;
 
-      // Move toward nearest player (chase)
-      let dx = 0;
-      let dy = 0;
-      if (Math.abs(nearest.x - enemy.x) > Math.abs(nearest.y - enemy.y)) {
-        dx = nearest.x > enemy.x ? 1 : nearest.x < enemy.x ? -1 : 0;
-      } else {
-        dy = nearest.y > enemy.y ? 1 : nearest.y < enemy.y ? -1 : 0;
-      }
+      // A* pathfinding toward nearest player
+      const nextStep = findNextStep(
+        enemy.x, enemy.y,
+        nearest.x, nearest.y,
+        this.state.tiles,
+        GameConfig.MAP_WIDTH,
+        GameConfig.MAP_HEIGHT
+      );
 
-      const newX = enemy.x + dx;
-      const newY = enemy.y + dy;
-
-      if (this.isWalkable(newX, newY)) {
-        enemy.x = newX;
-        enemy.y = newY;
+      if (nextStep) {
+        enemy.x = nextStep.x;
+        enemy.y = nextStep.y;
       }
 
       // Check collision with players (damage)
