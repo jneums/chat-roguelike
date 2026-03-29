@@ -203,6 +203,17 @@ export class GameRoom extends Room<GameState> {
     // Update projectiles every tick — they move fast
     const toRemove: string[] = [];
     this.state.projectiles.forEach((proj, id) => {
+      // Check hits at current position BEFORE moving (catches adjacent spawns)
+      let hit = false;
+      this.state.enemies.forEach((enemy) => {
+        if (enemy.hp <= 0 || hit) return;
+        if (enemy.x === proj.x && enemy.y === proj.y) {
+          enemy.hp -= 15;
+          hit = true;
+        }
+      });
+      if (hit) { toRemove.push(id); return; }
+
       proj.x += proj.dx;
       proj.y += proj.dy;
 
