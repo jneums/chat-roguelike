@@ -2,7 +2,7 @@ import { Room, Client } from "colyseus";
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { GameConfig, TileType, Direction } from "@chat-roguelike/shared";
 import { generateDungeon, DungeonResult } from "./dungeonGenerator";
-import { findNextStep } from "./pathfinding";
+import { findPath } from "./pathfinding";
 
 // Schema classes for Colyseus state synchronization
 export class Player extends Schema {
@@ -163,34 +163,35 @@ export class GameRoom extends Room<GameState> {
         return;
       }
 
-      // Find nearest player
-      const AGGRO_RANGE = 8; // tiles
-      let nearest: typeof players[0] | null = null;
-      let nearestDist = Infinity;
+      // Find nearest reachable player using A* path distance
+      const AGGRO_RANGE = 10; // tiles of actual walking distance
+      let bestPath: { nextStep: { x: number; y: number }; pathLength: number } | null = null;
+
       for (const p of players) {
         if (p.hp <= 0) continue;
-        const dist = Math.abs(p.x - enemy.x) + Math.abs(p.y - enemy.y);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearest = p;
+
+        // Quick Manhattan pre-check to skip obviously far players
+        const manhattan = Math.abs(p.x - enemy.x) + Math.abs(p.y - enemy.y);
+        if (manhattan > AGGRO_RANGE * 2) continue;
+
+        const path = findPath(
+          enemy.x, enemy.y,
+          p.x, p.y,
+          this.state.tiles,
+          GameConfig.MAP_WIDTH,
+          GameConfig.MAP_HEIGHT
+        );
+
+        if (path && path.pathLength <= AGGRO_RANGE) {
+          if (!bestPath || path.pathLength < bestPath.pathLength) {
+            bestPath = path;
+          }
         }
       }
 
-      // Only chase if player is within aggro range
-      if (!nearest || nearest.hp <= 0 || nearestDist > AGGRO_RANGE) return;
-
-      // A* pathfinding toward nearest player
-      const nextStep = findNextStep(
-        enemy.x, enemy.y,
-        nearest.x, nearest.y,
-        this.state.tiles,
-        GameConfig.MAP_WIDTH,
-        GameConfig.MAP_HEIGHT
-      );
-
-      if (nextStep) {
-        enemy.x = nextStep.x;
-        enemy.y = nextStep.y;
+      if (bestPath) {
+        enemy.x = bestPath.nextStep.x;
+        enemy.y = bestPath.nextStep.y;
       }
 
       // Check collision with players (damage)

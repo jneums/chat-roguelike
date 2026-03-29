@@ -20,12 +20,17 @@ function heuristic(ax: number, ay: number, bx: number, by: number): number {
   return Math.abs(ax - bx) + Math.abs(ay - by); // Manhattan distance
 }
 
+export interface PathResult {
+  nextStep: { x: number; y: number };
+  pathLength: number; // total tiles to reach target
+}
+
 /**
  * A* pathfinding on a tile grid.
- * Returns the next step {x, y} the entity should move to, or null if no path.
+ * Returns the next step and total path length, or null if no path.
  * maxSearch limits nodes explored to keep it fast for real-time use.
  */
-export function findNextStep(
+export function findPath(
   fromX: number,
   fromY: number,
   toX: number,
@@ -34,7 +39,7 @@ export function findNextStep(
   width: number,
   height: number,
   maxSearch: number = 200
-): { x: number; y: number } | null {
+): PathResult | null {
   if (fromX === toX && fromY === toY) return null;
 
   const getTile = (x: number, y: number): number => {
@@ -69,11 +74,12 @@ export function findNextStep(
 
     // Reached the goal — trace back to the first step
     if (current.x === toX && current.y === toY) {
+      const pathLength = current.g;
       let node = current;
       while (node.parent && node.parent.parent) {
         node = node.parent;
       }
-      return { x: node.x, y: node.y };
+      return { nextStep: { x: node.x, y: node.y }, pathLength };
     }
 
     closed.add(key(current.x, current.y));
