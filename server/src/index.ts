@@ -10,6 +10,12 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
 
+// Version endpoint
+const SERVER_START_VERSION = Date.now().toString();
+app.get("/version", (_req, res) => {
+  res.json({ version: SERVER_START_VERSION, uptime: process.uptime() });
+});
+
 // Colyseus monitor (admin panel)
 app.use("/colyseus", monitor());
 
