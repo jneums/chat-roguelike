@@ -167,6 +167,7 @@ export class GameRoom extends Room<GameState> {
       // Find nearest reachable player using A* path distance
       const AGGRO_RANGE = 10; // tiles of actual walking distance
       let bestPath: { nextStep: { x: number; y: number }; pathLength: number } | null = null;
+      let bestTarget: typeof players[0] | null = null;
 
       for (const p of players) {
         if (p.hp <= 0) continue;
@@ -186,28 +187,36 @@ export class GameRoom extends Room<GameState> {
         if (path && path.pathLength <= AGGRO_RANGE) {
           if (!bestPath || path.pathLength < bestPath.pathLength) {
             bestPath = path;
+            bestTarget = p;
           }
         }
       }
 
-      if (bestPath) {
-        enemy.x = bestPath.nextStep.x;
-        enemy.y = bestPath.nextStep.y;
-      }
-
-      // Check collision with players (damage)
-      for (const p of players) {
-        if (p.hp <= 0) continue;
-        if (enemy.x === p.x && enemy.y === p.y) {
-          p.hp = Math.max(0, p.hp - 10);
-          if (p.hp <= 0) {
-            // Respawn player after a delay
+      if (bestPath && bestTarget) {
+        // If already adjacent to target (pathLength === 1), stay put and attack
+        if (bestPath.pathLength <= 1) {
+          // Deal damage but don't move onto the player
+          bestTarget.hp = Math.max(0, bestTarget.hp - 10);
+          if (bestTarget.hp <= 0) {
             setTimeout(() => {
               const spawn = this.spawnPoints[0] || { x: 5, y: 5 };
-              p.x = spawn.x;
-              p.y = spawn.y;
-              p.hp = p.maxHp;
+              bestTarget!.x = spawn.x;
+              bestTarget!.y = spawn.y;
+              bestTarget!.hp = bestTarget!.maxHp;
             }, 3000);
+          }
+        } else {
+          // Check if next step is occupied by another enemy
+          const nextStep = bestPath.nextStep;
+          let blocked = false;
+          this.state.enemies.forEach((other) => {
+            if (other.id !== enemy.id && other.x === nextStep.x && other.y === nextStep.y) {
+              blocked = true;
+            }
+          });
+          if (!blocked) {
+            enemy.x = nextStep.x;
+            enemy.y = nextStep.y;
           }
         }
       }
