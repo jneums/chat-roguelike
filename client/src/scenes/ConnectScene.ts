@@ -21,17 +21,24 @@ export class ConnectScene extends Phaser.Scene {
   }
 
   private getServerUrl(): string {
-    // In production/preview: VITE_SERVER_URL is set by Render to the server's host
+    // Explicit override via env var
     const serverUrl = import.meta.env.VITE_SERVER_URL;
     if (serverUrl) {
       const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-      // serverUrl from Render is like "chat-roguelike-server-xxxx.onrender.com:443"
       const host = serverUrl.replace(/:443$/, "").replace(/^https?:\/\//, "");
       return `${protocol}://${host}`;
     }
-    // Local dev: connect to localhost game server via Vite proxy
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    return `${protocol}://${window.location.hostname}:2567`;
+
+    // On Render: derive server URL from client URL by convention
+    // chat-roguelike-client.onrender.com → chat-roguelike-server.onrender.com
+    const hostname = window.location.hostname;
+    if (hostname.includes(".onrender.com")) {
+      const serverHost = hostname.replace("-client", "-server");
+      return `wss://${serverHost}`;
+    }
+
+    // Local dev
+    return `ws://${hostname}:2567`;
   }
 
   private async connectToServer() {

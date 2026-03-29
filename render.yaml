@@ -9,8 +9,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 2567
     healthCheckPath: /matchmake/
     autoDeploy: true
 

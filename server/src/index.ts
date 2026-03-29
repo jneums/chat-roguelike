@@ -24,7 +24,9 @@ gameServer.define("game", GameRoom);
 
 const PORT = Number(process.env.PORT) || 2567;
 
-gameServer.listen(PORT).then(() => {
-  console.log(`🎮 Game server listening on http://localhost:${PORT}`);
-  console.log(`📊 Monitor at http://localhost:${PORT}/colyseus`);
+const HOST = process.env.HOST || "0.0.0.0";
+
+gameServer.listen(PORT, HOST as any).then(() => {
+  console.log(`🎮 Game server listening on http://${HOST}:${PORT}`);
+  console.log(`📊 Monitor at http://${HOST}:${PORT}/colyseus`);
 });
