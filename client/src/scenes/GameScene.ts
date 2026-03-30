@@ -33,6 +33,13 @@ export class GameScene extends Phaser.Scene {
   private pauseOverlay: Phaser.GameObjects.Container | null = null;
   private isPaused = false;
 
+  // Touch controls state
+  private touchDir: Direction | null = null;
+  private touchShoot = false;
+  private touchControlsContainer: Phaser.GameObjects.Container | null = null;
+  private isTouchDevice = false;
+  private dpadArrows: { up: Phaser.GameObjects.Graphics; down: Phaser.GameObjects.Graphics; left: Phaser.GameObjects.Graphics; right: Phaser.GameObjects.Graphics } | null = null;
+
   constructor() {
     super({ key: "GameScene" });
   }
@@ -50,6 +57,10 @@ export class GameScene extends Phaser.Scene {
     this.isPaused = false;
     this.pauseOverlay = null;
     this.inputCooldown = 0;
+    this.touchDir = null;
+    this.touchShoot = false;
+    this.touchControlsContainer = null;
+    this.dpadArrows = null;
 
     // Set up keyboard input
     this.keys = {
@@ -80,6 +91,9 @@ export class GameScene extends Phaser.Scene {
       GameConfig.MAP_WIDTH * TILE,
       GameConfig.MAP_HEIGHT * TILE
     );
+
+    // Create touch controls for mobile
+    this.createTouchControls();
 
     // Listen for state changes
     this.setupStateListeners();
@@ -398,13 +412,210 @@ export class GameScene extends Phaser.Scene {
     container.setAlpha(enemy.hp > 0 ? 1 : 0.2);
   }
 
+  private createTouchControls() {
+    this.isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (!this.isTouchDevice) return;
+
+    const cam = this.cameras.main;
+    this.touchControlsContainer = this.add.container(0, 0);
+    this.touchControlsContainer.setDepth(50);
+    this.touchControlsContainer.setScrollFactor(0);
+
+    // --- D-Pad (bottom-left) ---
+    const dpadX = 90;
+    const dpadY = cam.height - 90;
+    const dpadRadius = 50;
+
+    // Base circle
+    const dpadBase = this.add.graphics();
+    dpadBase.fillStyle(0x1a1a2e, 0.5);
+    dpadBase.fillCircle(dpadX, dpadY, dpadRadius);
+    dpadBase.lineStyle(2, 0xe94560, 0.3);
+    dpadBase.strokeCircle(dpadX, dpadY, dpadRadius);
+    dpadBase.setScrollFactor(0);
+    this.touchControlsContainer.add(dpadBase);
+
+    // Direction arrow helpers
+    const drawArrow = (gfx: Phaser.GameObjects.Graphics, cx: number, cy: number, dir: Direction, alpha: number) => {
+      gfx.clear();
+      gfx.fillStyle(0xe94560, alpha);
+      const s = 10; // arrow size
+      switch (dir) {
+        case Direction.UP:
+          gfx.fillTriangle(cx, cy - s, cx - s * 0.7, cy + s * 0.3, cx + s * 0.7, cy + s * 0.3);
+          break;
+        case Direction.DOWN:
+          gfx.fillTriangle(cx, cy + s, cx - s * 0.7, cy - s * 0.3, cx + s * 0.7, cy - s * 0.3);
+          break;
+        case Direction.LEFT:
+          gfx.fillTriangle(cx - s, cy, cx + s * 0.3, cy - s * 0.7, cx + s * 0.3, cy + s * 0.7);
+          break;
+        case Direction.RIGHT:
+          gfx.fillTriangle(cx + s, cy, cx - s * 0.3, cy - s * 0.7, cx - s * 0.3, cy + s * 0.7);
+          break;
+      }
+    };
+
+    // Create arrow graphics
+    const arrowOffset = 30;
+    const upArrow = this.add.graphics().setScrollFactor(0);
+    const downArrow = this.add.graphics().setScrollFactor(0);
+    const leftArrow = this.add.graphics().setScrollFactor(0);
+    const rightArrow = this.add.graphics().setScrollFactor(0);
+
+    drawArrow(upArrow, dpadX, dpadY - arrowOffset, Direction.UP, 0.3);
+    drawArrow(downArrow, dpadX, dpadY + arrowOffset, Direction.DOWN, 0.3);
+    drawArrow(leftArrow, dpadX - arrowOffset, dpadY, Direction.LEFT, 0.3);
+    drawArrow(rightArrow, dpadX + arrowOffset, dpadY, Direction.RIGHT, 0.3);
+
+    this.touchControlsContainer.add([upArrow, downArrow, leftArrow, rightArrow]);
+    this.dpadArrows = { up: upArrow, down: downArrow, left: leftArrow, right: rightArrow };
+
+    // Interactive zone for d-pad
+    const dpadZone = this.add.zone(dpadX, dpadY, dpadRadius * 2, dpadRadius * 2)
+      .setScrollFactor(0)
+      .setInteractive();
+
+    const updateDpadDir = (pointer: Phaser.Input.Pointer) => {
+      const dx = pointer.x - dpadX;
+      const dy = pointer.y - dpadY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 8) {
+        this.touchDir = null;
+        this.resetDpadHighlight(dpadX, dpadY, arrowOffset);
+        return;
+      }
+
+      const angle = Math.atan2(dy, dx);
+      // -PI/4 to PI/4 = right, PI/4 to 3PI/4 = down, etc
+      let dir: Direction;
+      if (angle >= -Math.PI / 4 && angle < Math.PI / 4) {
+        dir = Direction.RIGHT;
+      } else if (angle >= Math.PI / 4 && angle < 3 * Math.PI / 4) {
+        dir = Direction.DOWN;
+      } else if (angle >= -3 * Math.PI / 4 && angle < -Math.PI / 4) {
+        dir = Direction.UP;
+      } else {
+        dir = Direction.LEFT;
+      }
+      this.touchDir = dir;
+      this.highlightDpadArrow(dir, dpadX, dpadY, arrowOffset);
+    };
+
+    dpadZone.on('pointerdown', updateDpadDir);
+    dpadZone.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.isDown) updateDpadDir(pointer);
+    });
+    dpadZone.on('pointerup', () => {
+      this.touchDir = null;
+      this.resetDpadHighlight(dpadX, dpadY, arrowOffset);
+    });
+    dpadZone.on('pointerout', () => {
+      this.touchDir = null;
+      this.resetDpadHighlight(dpadX, dpadY, arrowOffset);
+    });
+
+    this.touchControlsContainer.add(dpadZone);
+
+    // --- Fire Button (bottom-right) ---
+    const fireX = cam.width - 80;
+    const fireY = cam.height - 90;
+    const fireRadius = 35;
+
+    const fireBg = this.add.graphics().setScrollFactor(0);
+    fireBg.fillStyle(0xe94560, 0.4);
+    fireBg.fillCircle(fireX, fireY, fireRadius);
+    fireBg.lineStyle(2, 0xe94560, 0.6);
+    fireBg.strokeCircle(fireX, fireY, fireRadius);
+    this.touchControlsContainer.add(fireBg);
+
+    // Crosshair inside fire button
+    const crosshair = this.add.graphics().setScrollFactor(0);
+    crosshair.lineStyle(2, 0xffffff, 0.6);
+    crosshair.strokeCircle(fireX, fireY, 8);
+    crosshair.lineBetween(fireX, fireY - 14, fireX, fireY - 4);
+    crosshair.lineBetween(fireX, fireY + 4, fireX, fireY + 14);
+    crosshair.lineBetween(fireX - 14, fireY, fireX - 4, fireY);
+    crosshair.lineBetween(fireX + 4, fireY, fireX + 14, fireY);
+    this.touchControlsContainer.add(crosshair);
+
+    const fireZone = this.add.zone(fireX, fireY, fireRadius * 2, fireRadius * 2)
+      .setScrollFactor(0)
+      .setInteractive();
+
+    fireZone.on('pointerdown', () => {
+      this.touchShoot = true;
+      fireBg.clear();
+      fireBg.fillStyle(0xe94560, 0.7);
+      fireBg.fillCircle(fireX, fireY, fireRadius);
+      fireBg.lineStyle(2, 0xe94560, 0.8);
+      fireBg.strokeCircle(fireX, fireY, fireRadius);
+    });
+    fireZone.on('pointerup', () => {
+      this.touchShoot = false;
+      fireBg.clear();
+      fireBg.fillStyle(0xe94560, 0.4);
+      fireBg.fillCircle(fireX, fireY, fireRadius);
+      fireBg.lineStyle(2, 0xe94560, 0.6);
+      fireBg.strokeCircle(fireX, fireY, fireRadius);
+    });
+    fireZone.on('pointerout', () => {
+      this.touchShoot = false;
+      fireBg.clear();
+      fireBg.fillStyle(0xe94560, 0.4);
+      fireBg.fillCircle(fireX, fireY, fireRadius);
+      fireBg.lineStyle(2, 0xe94560, 0.6);
+      fireBg.strokeCircle(fireX, fireY, fireRadius);
+    });
+
+    this.touchControlsContainer.add(fireZone);
+  }
+
+  private highlightDpadArrow(dir: Direction, cx: number, cy: number, offset: number) {
+    if (!this.dpadArrows) return;
+    const s = 10;
+    const drawArrow = (gfx: Phaser.GameObjects.Graphics, ax: number, ay: number, d: Direction, alpha: number) => {
+      gfx.clear();
+      gfx.fillStyle(0xe94560, alpha);
+      switch (d) {
+        case Direction.UP:
+          gfx.fillTriangle(ax, ay - s, ax - s * 0.7, ay + s * 0.3, ax + s * 0.7, ay + s * 0.3);
+          break;
+        case Direction.DOWN:
+          gfx.fillTriangle(ax, ay + s, ax - s * 0.7, ay - s * 0.3, ax + s * 0.7, ay - s * 0.3);
+          break;
+        case Direction.LEFT:
+          gfx.fillTriangle(ax - s, ay, ax + s * 0.3, ay - s * 0.7, ax + s * 0.3, ay + s * 0.7);
+          break;
+        case Direction.RIGHT:
+          gfx.fillTriangle(ax + s, ay, ax - s * 0.3, ay - s * 0.7, ax - s * 0.3, ay + s * 0.7);
+          break;
+      }
+    };
+
+    drawArrow(this.dpadArrows.up, cx, cy - offset, Direction.UP, dir === Direction.UP ? 0.8 : 0.3);
+    drawArrow(this.dpadArrows.down, cx, cy + offset, Direction.DOWN, dir === Direction.DOWN ? 0.8 : 0.3);
+    drawArrow(this.dpadArrows.left, cx - offset, cy, Direction.LEFT, dir === Direction.LEFT ? 0.8 : 0.3);
+    drawArrow(this.dpadArrows.right, cx + offset, cy, Direction.RIGHT, dir === Direction.RIGHT ? 0.8 : 0.3);
+  }
+
+  private resetDpadHighlight(cx: number, cy: number, offset: number) {
+    this.highlightDpadArrow(null as any, cx, cy, offset);
+  }
+
   update(time: number, delta: number) {
     // Don't process input while paused
-    if (this.isPaused) return;
+    if (this.isPaused) {
+      // Hide touch controls when paused
+      if (this.touchControlsContainer) this.touchControlsContainer.setVisible(false);
+      return;
+    }
+    // Show touch controls when not paused
+    if (this.touchControlsContainer) this.touchControlsContainer.setVisible(true);
 
     // Shoot handling (separate cooldown)
     this.shootCooldown -= delta;
-    if (this.keys.SPACE.isDown && this.shootCooldown <= 0) {
+    if ((this.keys.SPACE.isDown || this.touchShoot) && this.shootCooldown <= 0) {
       this.room.send("shoot");
       this.shootCooldown = 300;
     }
@@ -419,6 +630,7 @@ export class GameScene extends Phaser.Scene {
     else if (this.keys.S.isDown) direction = Direction.DOWN;
     else if (this.keys.A.isDown) direction = Direction.LEFT;
     else if (this.keys.D.isDown) direction = Direction.RIGHT;
+    else if (this.touchDir) direction = this.touchDir;
 
     if (direction) {
       this.room.send("input", {
