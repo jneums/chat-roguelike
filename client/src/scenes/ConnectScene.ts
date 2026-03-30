@@ -16,7 +16,7 @@ export class ConnectScene extends Phaser.Scene {
 
   create(data: ConnectData) {
     this.statusText = this.add
-      .text(400, 300, "Connecting...", {
+      .text(this.scale.width / 2, this.scale.height / 2, "Connecting...", {
         fontSize: "24px",
         color: "#e94560",
         fontFamily: "monospace",

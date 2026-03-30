@@ -6,14 +6,14 @@ import { startVersionCheck, getClientVersion } from "./utils/versionCheck";
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.CANVAS,
-  width: 800,
-  height: 640,
+  width: window.innerWidth,
+  height: window.innerHeight,
   parent: "game-container",
   backgroundColor: "#1a1a2e",
   pixelArt: true,
   scene: [MenuScene, ConnectScene, GameScene],
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
 };
