@@ -49,9 +49,21 @@ export class MenuScene extends Phaser.Scene {
       });
     });
 
+    // Fullscreen button (useful on mobile to hide browser chrome)
+    if (document.fullscreenEnabled || (document as any).webkitFullscreenEnabled) {
+      this.createButton(width / 2, 215, "⛶  FULLSCREEN", () => {
+        const el = document.documentElement as any;
+        if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+          (el.requestFullscreen?.() || el.webkitRequestFullscreen?.());
+        } else {
+          (document.exitFullscreen?.() || (document as any).webkitExitFullscreen?.());
+        }
+      });
+    }
+
     // Rooms header
     this.add
-      .text(width / 2, 220, "— AVAILABLE ROOMS —", {
+      .text(width / 2, 270, "— AVAILABLE ROOMS —", {
         fontSize: "18px",
         color: "#888899",
         fontFamily: "monospace",
@@ -60,7 +72,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Status text (loading / no rooms)
     this.statusText = this.add
-      .text(width / 2, 300, "Loading rooms...", {
+      .text(width / 2, 350, "Loading rooms...", {
         fontSize: "14px",
         color: "#555577",
         fontFamily: "monospace",
@@ -139,13 +151,13 @@ export class MenuScene extends Phaser.Scene {
     this.roomListContainer.removeAll(true);
 
     const { width } = this.scale;
-    const startY = 250;
+    const startY = 300;
 
     if (rooms.length === 0) {
       if (this.statusText) {
         this.statusText.setText("No rooms yet — create one!");
         this.statusText.setVisible(true);
-        this.statusText.setY(300);
+        this.statusText.setY(350);
       }
       return;
     }
